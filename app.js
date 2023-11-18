@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const { auth, db } = require('./firebaseConnection');
@@ -20,7 +21,6 @@ app.use(
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Função para verificar se o usuário está autenticado
 function checkAuth(req, res, next) {
     if (req.session.user) {
         next();
@@ -97,7 +97,6 @@ app.get('/login', (req, res) => {
     `);
 });
 
-// Rota de autenticação
 app.post('/login', async (req, res) => {
     const { email, senha } = req.body;
 
@@ -105,16 +104,11 @@ app.post('/login', async (req, res) => {
         const userCredential = await signInWithEmailAndPassword(auth, email, senha);
         const user = userCredential.user;
 
-        // Autenticação bem-sucedida, faça o que for necessário aqui
-
-        // Armazenar o e-mail do usuário na sessão
         req.session.user = {
             uid: user.uid,
             email: user.email,
-            // Outras informações do usuário conforme necessário
         };
 
-        // Armazenar o e-mail do usuário em um cookie
         res.cookie('user_email', user.email, { maxAge: 900000, httpOnly: true });
 
         res.redirect('/');
@@ -124,20 +118,49 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Rota protegida que requer autenticação
-app.get('/', checkAuth, (req, res) => {
-    const user = req.session.user;
+app.get('/', checkAuth, async (req, res) => {
+    let pesquisaPais = req.query.pesquisaPais || '';
 
-    res.send(`
-        <h1>Dashboard</h1>
-        <p>Bem-vindo, ${user.email}!</p>
-        <a href="/logout">Logout</a>
-    `);
+    let paises = [];
+    if (pesquisaPais) {
+        try {
+            const response = await axios.get(`https://restcountries.com/v3.1/name/${pesquisaPais}`);
+            paises = response.data;
+        } catch (error) {
+            console.error('Erro ao buscar países na API:', error.message);
+        }
+    }
+
+    // Template de resposta HTML
+    const htmlResponse = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Lista de Países</title>
+        </head>
+        <body>
+            <h1>Lista de Países</h1>
+            <form action="/" method="GET">
+                <label for="pesquisaPais">Pesquisar Países:</label>
+                <input type="text" id="pesquisaPais" name="pesquisaPais" value="${pesquisaPais}">
+                <button type="submit">Pesquisar</button>
+            </form>
+            <ul>
+                ${paises.map(pais => `<li>${pais.name.common} - ${pais.population} <a href="/adicionar/${pais.cca2}">Adicionar ao carrinho</a></li>`).join('')}
+            </ul>
+            <a href="/carrinho">Ver Carrinho</a>
+            <br>
+            <a href="/perfil">Voltar para perfil</a>
+        </body>
+        </html>
+    `;
+
+    res.send(htmlResponse);
 });
 
-// Rota de logout
 app.get('/logout', (req, res) => {
-    // Limpar a sessão e o cookie, e redirecionar para a página de login
     req.session.destroy((err) => {
         if (err) {
             console.error(err);
@@ -147,18 +170,16 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// Exemplo de rota protegida que usa checkAuth
 app.get('/carrinho', checkAuth, (req, res) => {
-    // Manipular o carrinho de compras usando a sessão
     const carrinho = req.session.carrinho || [];
     res.send(`
-        <h1>Carrinho de Compras</h1>
+    < h1 > Carrinho de Compras</h1 >
         <p>Itens no carrinho: ${carrinho.length}</p>
-    `);
+`);
 });
 
-// Porta em que o servidor será executado
+
 const PORT = 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT} `);
 });
