@@ -3,10 +3,8 @@ const session = require('express-session');
 const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
-const { auth, db } = require('./firebaseConnection');
-const { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } = require('firebase/auth');
-const { doc, getDoc, setDoc } = require('firebase/firestore');
-const { toast } = require('react-toastify');
+const { auth } = require('./firebaseConnection');
+const { signInWithEmailAndPassword } = require('firebase/auth');
 
 const app = express();
 
@@ -21,6 +19,13 @@ app.use(
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+    if (!req.session.visitados) {
+        req.session.visitados = [];
+    }
+    next();
+});
+
 function checkAuth(req, res, next) {
     if (req.session.user) {
         next();
@@ -29,7 +34,6 @@ function checkAuth(req, res, next) {
     }
 }
 
-// Rota de login
 app.get('/login', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -46,7 +50,6 @@ app.get('/login', (req, res) => {
                     height: 100vh;
                     margin: 0;
                 }
-
                 form {
                     width: 300px;
                     padding: 20px;
@@ -54,19 +57,16 @@ app.get('/login', (req, res) => {
                     border-radius: 8px;
                     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
                 }
-
                 label {
                     display: block;
                     margin-bottom: 8px;
                 }
-
                 input {
                     width: 100%;
                     padding: 8px;
                     margin-bottom: 16px;
                     box-sizing: border-box;
                 }
-
                 button {
                     background-color: #4caf50;
                     color: white;
@@ -75,7 +75,6 @@ app.get('/login', (req, res) => {
                     border-radius: 4px;
                     cursor: pointer;
                 }
-
                 button:hover {
                     background-color: #45a049;
                 }
@@ -86,10 +85,8 @@ app.get('/login', (req, res) => {
                 <h1>Login</h1>
                 <label for="email">Email:</label>
                 <input type="email" id="email" name="email" required>
-
                 <label for="senha">Senha:</label>
                 <input type="password" id="senha" name="senha" required>
-
                 <button type="submit">Login</button>
             </form>
         </body>
@@ -120,27 +117,79 @@ app.post('/login', async (req, res) => {
 
 app.get('/', checkAuth, async (req, res) => {
     let pesquisaPais = req.query.pesquisaPais || '';
-
     let paises = [];
+
     if (pesquisaPais) {
         try {
             const response = await axios.get(`https://restcountries.com/v3.1/name/${pesquisaPais}`);
             paises = response.data;
         } catch (error) {
-            console.error('Erro ao buscar países na API:', error.message);
+            console.error('Fudeo:', error.message);
         }
     }
 
-    // Template de resposta HTML
-    const htmlResponse = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Lista de Países</title>
-        </head>
-        <body>
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Lista de Países</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                margin: 0;
+            }
+            h1 {
+                color: #333;
+            }
+            form {
+                margin-bottom: 20px;
+            }
+            label {
+                display: block;
+                margin-bottom: 8px;
+            }
+            input {
+                width: 100%;
+                padding: 8px;
+                margin-bottom: 16px;
+                box-sizing: border-box;
+            }
+            button {
+                background-color: #4caf50;
+                color: white;
+                padding: 10px 15px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            button:hover {
+                background-color: #45a049;
+            }
+            ul {
+                list-style: none;
+                padding: 0;
+            }
+            li {
+                margin-bottom: 10px;
+            }
+            a {
+                text-decoration: none;
+                color: #007bff;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+        </style>
+    </head>
+    <body>
+        <div>
             <h1>Lista de Países</h1>
             <form action="/" method="GET">
                 <label for="pesquisaPais">Pesquisar Países:</label>
@@ -148,16 +197,151 @@ app.get('/', checkAuth, async (req, res) => {
                 <button type="submit">Pesquisar</button>
             </form>
             <ul>
-                ${paises.map(pais => `<li>${pais.name.common} - ${pais.population} <a href="/adicionar/${pais.cca2}">Adicionar ao carrinho</a></li>`).join('')}
+                ${paises.map(
+        (pais) =>
+            `<li>${pais.name.common} <a href="/adicionar/${pais.cca2}">Adicionar a visitados</a></li>`
+    ).join('')}
             </ul>
-            <a href="/carrinho">Ver Carrinho</a>
-            <br>
-            <a href="/perfil">Voltar para perfil</a>
-        </body>
-        </html>
-    `;
+            <a href="/visitados">Ver Visitados</a>
+        </div>
+    </body>
+    </html>
+`);
+});
 
-    res.send(htmlResponse);
+app.get('/adicionar/:id', async (req, res) => {
+    const paisId = req.params.id;
+
+    if (!req.session.visitados.includes(paisId)) {
+        try {
+            const response = await axios.get(`https://restcountries.com/v3.1/alpha/${paisId}`);
+            const paisDetalhes = response.data;
+
+            req.session.visitados.push({
+                id: paisId,
+                detalhes: paisDetalhes,
+            });
+
+            console.log('Sessão visitados:', req.session.visitados);
+
+            res.redirect('/');
+        } catch (error) {
+            console.error('Fudeo:', error.message);
+            res.send('Deu erro :(');
+        }
+    } else {
+        res.redirect('/');
+    }
+});
+
+app.get('/visitados', checkAuth, async (req, res) => {
+    const visitados = req.session.visitados || [];
+
+    if (visitados.length === 0) {
+        res.send(`Nenhum país visitado ainda.`);
+    }
+    else {
+
+        try {
+            const detalhesVisitados = await Promise.all(
+                visitados.map(async (visitado) => {
+                    try {
+                        if (
+                            visitado &&
+                            visitado.detalhes &&
+                            visitado.detalhes.length > 0 &&
+                            visitado.detalhes[0].name &&
+                            visitado.detalhes[0].flags &&
+                            visitado.detalhes[0].flags.svg
+                        ) {
+                            const nomeComum = visitado.detalhes[0].name.common || '';
+
+                            return {
+                                nomeComum,
+                                bandeira: visitado.detalhes[0].flags.svg,
+                            };
+                        } else {
+                            return null;
+                        }
+                    } catch (error) {
+                        console.error('Fudeo:', error.message);
+                        return null;
+                    }
+                })
+            );
+
+            const paisesValidos = detalhesVisitados.filter((pais) => pais !== null);
+
+            const htmlResponse = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Países Visitados</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        text-align: center;
+                    }
+                    h1 {
+                        color: #333;
+                    }
+                    .pais-list-container {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        height: 80vh; 
+                    }
+                    ul {
+                        list-style: none;
+                        padding: 0;
+                        margin: 0; 
+                    }
+                    li {
+                        margin-bottom: 10px;
+                        display: flex;
+                        align-items: center;
+                    }
+                    img {
+                        width: 30px; 
+                        height: auto;
+                        margin-right: 10px;
+                    }
+                    a {
+                        text-decoration: none;
+                        color: #007bff;
+                        margin-bottom: 10px;
+                        display: block;
+                    }
+                    a:hover {
+                        text-decoration: underline;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Países Visitados</h1>
+                <div class="pais-list-container">
+                    <ul>
+                        ${paisesValidos
+                    .map(
+                        (pais) =>
+                            `<li><img src="${pais.bandeira}" alt="Bandeira">${pais.nomeComum}</li>`
+                    )
+                    .join('')}
+                    </ul>
+                </div>
+                <a href="/">Voltar</a>
+            </body>
+            </html>
+        `;
+
+            res.send(htmlResponse);
+        } catch (error) {
+            console.error('Fudeo:', error.message);
+            res.send('Deu erro caboco');
+        }
+    }
 });
 
 app.get('/logout', (req, res) => {
@@ -170,16 +354,6 @@ app.get('/logout', (req, res) => {
     });
 });
 
-app.get('/carrinho', checkAuth, (req, res) => {
-    const carrinho = req.session.carrinho || [];
-    res.send(`
-    < h1 > Carrinho de Compras</h1 >
-        <p>Itens no carrinho: ${carrinho.length}</p>
-`);
-});
-
-
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT} `);
+app.listen(3000, () => {
+    console.log(`Rodando`);
 });
