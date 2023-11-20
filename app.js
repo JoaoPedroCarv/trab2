@@ -118,6 +118,7 @@ app.post('/login', async (req, res) => {
 app.get('/', checkAuth, async (req, res) => {
     let pesquisaPais = req.query.pesquisaPais || '';
     let paises = [];
+    const userEmail = req.cookies.user_email;
 
     if (pesquisaPais) {
         try {
@@ -190,7 +191,8 @@ app.get('/', checkAuth, async (req, res) => {
     </head>
     <body>
         <div>
-            <h1>Lista de Países</h1>
+            <h1>Buscar Países</h1>
+            <h5>Bem Vindo(a) ${userEmail}!</h5>
             <form action="/" method="GET">
                 <label for="pesquisaPais">Pesquisar Países:</label>
                 <input type="text" id="pesquisaPais" name="pesquisaPais" value="${pesquisaPais}">
