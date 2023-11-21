@@ -4,7 +4,7 @@ const axios = require('axios');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const { auth } = require('./firebaseConnection');
-const { signInWithEmailAndPassword } = require('firebase/auth');
+const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = require('firebase/auth');
 
 const app = express();
 
@@ -33,6 +33,7 @@ function checkAuth(req, res, next) {
         res.redirect('/login');
     }
 }
+
 
 app.get('/login', (req, res) => {
     res.send(`
@@ -80,15 +81,85 @@ app.get('/login', (req, res) => {
                 }
             </style>
         </head>
+         <body>
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <form method="post" action="/login">
+                    <h1>Login</h1>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                    <label for="senha">Senha:</label>
+                    <input type="password" id="senha" name="senha" required>
+                    <button type="submit">Login</button>
+                </form>
+                <p style="margin-top: 20px;">Não possui uma conta? <a href="/cadastro">Cadastre-se</a></p>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+
+
+app.get('/cadastro', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Cadastro</title>
+            <style>
+                body {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                form {
+                    width: 300px;
+                    padding: 20px;
+                    border: 1px solid #ccc;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }
+                label {
+                    display: block;
+                    margin-bottom: 8px;
+                }
+                input {
+                    width: 100%;
+                    padding: 8px;
+                    margin-bottom: 16px;
+                    box-sizing: border-box;
+                }
+                button {
+                    background-color: #4caf50;
+                    color: white;
+                    padding: 10px 15px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+                button:hover {
+                    background-color: #45a049;
+                }
+            </style>
+        </head>
         <body>
-            <form method="post" action="/login">
-                <h1>Login</h1>
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-                <label for="senha">Senha:</label>
-                <input type="password" id="senha" name="senha" required>
-                <button type="submit">Login</button>
-            </form>
+            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;">
+                <form method="post" action="/cadastro" style="width: 300px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);">
+                    <h1>Cadastro</h1>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                    <label for="senha">Senha:</label>
+                    <input type="password" id="senha" name="senha" required>
+                    <button type="submit">Cadastrar</button>
+                </form>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <p>Já possui uma conta? <a href="/login">Faça login</a></p>
+            </div>
         </body>
         </html>
     `);
@@ -114,6 +185,31 @@ app.post('/login', async (req, res) => {
         res.send('Erro ao fazer login');
     }
 });
+
+app.post('/cadastro', async (req, res) => {
+    const { email, senha } = req.body;
+
+    try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+        const user = userCredential.user;
+
+        req.session.user = {
+            uid: user.uid,
+            email: user.email,
+        };
+
+        res.cookie('user_email', user.email, { maxAge: 900000, httpOnly: true });
+
+        res.redirect('/login');
+    } catch (error) {
+        console.error(error);
+        res.send('Erro ao cadastrar');
+    }
+
+});
+
+
+
 
 app.get('/', checkAuth, async (req, res) => {
     let pesquisaPais = req.query.pesquisaPais || '';
@@ -205,6 +301,7 @@ app.get('/', checkAuth, async (req, res) => {
     ).join('')}
             </ul>
             <a href="/visitados">Ver Visitados</a>
+            <a href="/logout">Logout</a>
         </div>
     </body>
     </html>
@@ -355,6 +452,7 @@ app.get('/logout', (req, res) => {
         res.redirect('/login');
     });
 });
+
 
 app.listen(3000, () => {
     console.log(`Rodando`);
